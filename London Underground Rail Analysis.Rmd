@@ -1,0 +1,248 @@
+---
+title: 'Business Statistics Mid-Term Assessment IB94X0 2026-2027 Assignment 1'
+author: 'Zeeshan Khatib (Student ID: 5830521)'
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, message=FALSE}
+
+library(tidyverse)
+options(width=100)
+
+```
+
+---
+---
+
+# Section 1
+
+Load dataset and assign it to variable data
+
+```{r}
+file_path = '/Users/zeeshankhatib/Desktop/Business Statistics Assignment 1/Underground_v_161026.csv' #Specify the file path to Underground_v_161026.csv file here
+data <- read_csv(file_path)
+```
+
+Checking all the unique Railway Lines included in the dataset
+```{r}
+data %>%
+  group_by(Line) %>%
+  summarise(count=n())
+```
+
+Changing Jubilee_XYZ into Jubilee, because there are only 2 instances of Jubilee_XYZ in the entire dataset, hence I'm assuming that it was a mistake in recording.
+```{r}
+data <- data %>%
+  mutate(Line = if_else(Line == 'Jubilee_XYZ', 'Jubilee', Line))
+```
+
+Checking for duplication in name of months.
+```{r}
+data %>%
+  group_by(Month) %>%
+  summarise(n())
+```
+
+Checking for any missing ID values
+```{r}
+filter(data, is.na(ID))
+```
+
+Replacing the missing ID values with {TFL followed by five digits, appropriate no of zeroes followed by the index number of the row}
+
+For example:
+Row 1: `TFL00001`, Row 12: `TFL00012`, Row 125: `TFL00125`
+
+(DISCLOSURE: I did use the help of ChatGPT for the paste0() & sprintf() functions)
+```{r}
+data <- data %>%
+  mutate(ID = if_else( is.na(ID), paste0("TFL", sprintf("%05d", row_number())), ID))
+```
+
+Rechecking if there are any missing ID values left in our data.
+```{r}
+filter(data, is.na(ID))
+```
+
+Checking how many NA temperature measures are there in the data.
+```{r}
+data %>%
+  group_by(Temp) %>%
+  summarise(n()) %>%
+  filter(is.na(Temp))
+```
+
+Viewing all the entries where temperature is not recorded.
+```{r}
+filter(data, is.na(Temp))
+```
+
+Removing all the rows where no temperature was recorded, as these are redundancies and will negatively impact our analysis.
+```{r}
+data <- data %>% 
+  filter(!is.na(Temp))
+```
+
+Rechecking to see if there are any rows with missing Temperatures still left in our data.
+```{r}
+filter(data, is.na(Temp))
+```
+
+Checking the mean, median, standard deviation, minimum and maximum Temperature across the entire data and also for each individual line.
+```{r}
+data %>% summarise(mean_overall_temp = mean(Temp), meadian_overall_temp = median(Temp), stdev_overall_temp = sd(Temp), min_overall_temp = min(Temp), max_overall_temp = max(Temp))
+```
+```{r}
+data %>%
+  group_by(Line) %>%
+  summarise(mean = mean(Temp), meadian = median(Temp), stdev = sd(Temp), min = min(Temp), max= max(Temp))
+```
+
+In the overall summary table I noticed that the max temperature is showing as 267 Degree Celsius, which seems a bit off. Hence I go ahead and check how many rows have a temperature greater than 45 degree Celsius, because I'm assuming that any temperature above 45 degrees in London is very unusual and most probably is an error in recording.
+```{r}
+filter(data, round(Temp,2) > 45.00)
+```
+
+After running the above line of code I see that there are 3 instances of unusually high temperatures recorded, all being 200+ , This of course is an error in recording and I'm assuming that the person recording this data misplaced the decimal point by one decimal space, and so I divided these three values by 10. This way the temperatures recorded stand corrected.
+```{r}
+data <- mutate(data, Temp = if_else(Temp > 50, Temp/10, Temp))
+```
+
+Checking for abnormally low temperatures
+```{r}
+arrange(data, Temp)
+```
+
+After running the above line of code we can see that there are 4 outliers which show much lower temperatures as compared to others.To investigate whether these values are genuine anomalies or reflect unusual temperature patterns, I examine the temperatures recorded for the corresponding Underground lines and months in previous years. This allows me to compare the observations against historical patterns and assess whether the unusually low temperatures are plausible.
+```{r}
+filter(data, Month == 'April' & Line == 'Bakerloo')
+filter(data, Month == 'August' & Line == 'Waterloo_and_City')
+filter(data, Month == 'July' & Line == 'Central')
+filter(data, Month == 'September' & Line == 'Northern')
+```
+
+Based on the historical comparisons, I infer that the unusually low temperatures resulted from misplaced decimal points during data entry. In three cases, the decimal point was misplaced by one position, while for Bakerloo in April 2014, it was misplaced by two positions. I therefore correct these errors using the following code.
+```{r}
+data <- data %>%
+  mutate( Temp = if_else(ID=='TFL00121', Temp *100, Temp))
+
+data <- data %>%
+  mutate(Temp = if_else(ID %in% c('TFL00735','TFL00530','TFL00452'), Temp*10, Temp))
+
+view(data)
+
+```
+Creating a new tibble which does not include the Sub-surface_lines.
+
+```{r}
+new_data <- data %>%
+  filter(Line != 'Sub-surface_lines')
+```
+
+Importing relevant libraries for plotting the data
+```{r}
+library(ggplot2)
+library(gridExtra)
+```
+
+Checking for how many temperature recordings we have for each of the lines in the year 2022
+```{r}
+new_data %>%
+  filter(Year == 2022) %>%
+  group_by(Line) %>%
+  summarise(n())
+```
+
+Plotting  the distribution of average monthly temperatures across all lines in 2022. I specifically used the year 2022 because we have records of temperature readings for all months in all the lines during that year.
+
+(DISCLOSURE: I used ChatGPT to get to know about the built in character vectors month.abb & month.name and the functions theme() & element_rect() in R)
+```{r, fig.width=10, fig.height=7}
+mean_temp <- new_data %>%
+  filter(Year == 2022) %>%
+  group_by(Line) %>%
+  summarise(mean_temp = mean(Temp))
+
+
+ggplot(data = filter(new_data, Year == 2022)) + geom_point(mapping = aes(x= Month, y= Temp), colour = 'blue', size=3) + facet_wrap(~ Line) +  scale_x_discrete(limits = month.name, labels= month.abb) + labs(x= 'Months', y= 'Temperature (Degree Celsius)', title= 'Fig 1: Distribution of temperature across all lines in 2022') + theme(panel.background = element_rect(fill = "lightgreen")) + geom_hline(data = mean_temp, aes(yintercept = mean_temp), col = "magenta")
+```
+
+Plotting Monthly Temperature readings Pooled Across All Lines In 2022
+
+(DISCLOSURE: I used ChatGPT for the scale_colour_manual() function)
+```{r,fig.width=10, fig.height=7}
+ggplot(data= filter(new_data, Year == 2022)) + geom_point(mapping = aes(x= Line, y= Temp), size=3) + labs(x= 'Railway line Name', y= 'Temperature (Degree Celsius)', title= 'Fig 2: Monthly Temperature readings Pooled Across All Lines In 2022') + geom_point(data = mean_temp, mapping = aes(x = Line, y = mean_temp, colour = Line), shape = 95, size = 12) + scale_colour_manual(values = c("magenta", "green", "orange","red", "blue", "black", "brown"))
+
+
+
+```
+
+
+Created a new tibble containing rows from only Central and Jubilee Line
+```{r}
+jubilee.vs.central <- new_data %>%
+  filter(Line %in% c('Central','Jubilee') )
+
+view(jubilee.vs.central)
+```
+
+Calculating the mean and standard deviation for temperatures in Central and Jubilee line
+```{r}
+jubilee.vs.central %>%
+  group_by(Line) %>%
+  summarise(mean = mean(Temp), StDev = sd(Temp))
+```
+Performing a two-sample t-test between the average temperature in Jubilee and Central lines.
+
+```{r}
+t.test(Temp~Line, data = jubilee.vs.central)
+```
+
+Performing a two-sample t-test between the average temperature in Jubilee and Central lines only for the summer months (May, June, July and August).
+
+```{r}
+t.test(Temp~Line, data = filter(jubilee.vs.central, Month %in% c('May','June','July','August')))
+```
+
+Creating a new tibble which only contains temperature readings from Jubilee and Central lines.
+```{r}
+jubilee.vs.central <- jubilee.vs.central %>%
+  mutate(Month = factor(Month, levels = month.name, ordered = TRUE))
+```
+---
+
+# Section 2 Professionally formatted report for managers.
+
+Fig 1 illustrates the distribution of average monthly temperatures across all railway lines in 2022. The magenta line represents the average temperature for each respective line. We can observe that temperatures generally peak around July–August and are at their lowest in December and January. Among all the lines, Victoria has the highest average temperature, at approximately 27.5°C.
+
+Fig 2 presents the monthly temperature readings pooled across all railway lines for 2022. It further highlights the difference between the lines, with Victoria recording the highest average temperature and Waterloo & City the lowest, at approximately 20°C.
+
+For the first two-sample t-test, I compare the average temperatures of the Jubilee and Central lines across the entire year. The null hypothesis states that the difference between their mean temperatures is zero, while the alternative hypothesis states that it is not zero. The p-value is less than 2.2e-16, providing strong evidence to reject the null hypothesis. This suggests that the difference in average temperatures between the two lines is statistically significant.
+
+For the second t-test, I repeat the comparison using only the summer months. Once again, the p-value is less than 2.2e-16, indicating a statistically significant difference in average temperatures between the two lines during summer as well.
+
+
+
+#### The Following graph and table shows the Average temperature throughout all the years for each month for both Central and Jubilee line.
+
+
+```{r, fig.width=10, fig.height=7, echo=FALSE, message = FALSE}
+ggplot(data= jubilee.vs.central) + geom_point(mapping = aes(x= Month, y=Temp, colour= Line)) + labs(x= 'Month', y= 'Temperature (in Degree Celsius)', title= 'Fig 3: Average temperature throughout all the years for each month for both Central and Jubilee line.')
+```
+```{r, echo=FALSE, message = FALSE}
+jubilee.vs.central %>%
+  group_by(Line, Month) %>%
+  summarize(Avg_temp = mean(Temp, na.rm = TRUE)) %>%
+  pivot_wider(names_from = Line, values_from = Avg_temp) # (DISCLOSURE: I used ChatGPT for the pivot_wider() function)
+```
+
+
+
+Based on Fig 3 and the table above, I would recommend installing an air conditioning system on the Central line, as its average temperatures are consistently higher than those of the Jubilee line across the months. The results of both t-tests further support this recommendation, confirming that the difference in average temperatures between the two lines is statistically significant.
+
+
+---
